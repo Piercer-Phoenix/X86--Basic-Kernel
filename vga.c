@@ -39,7 +39,3 @@ void print(char * str){
     }
 
 }
-
-void move_cursor(){
-
-}
