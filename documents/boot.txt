@@ -1,0 +1,78 @@
+
+The main purpose of a bootloader in context of x86 is to take control after BIOS executes POST and set up a basic environment for the kernel to work. 
+
+In this particular implementation, the bootloader has been stripped of all additional functionalities and been reduced to a minimal functioning version which only sets up an environment for a x86 kernel to work. 
+
+The 3 main functionalities/jobs of a bootloader, in my opinion, are as follows:
+
+    1: Load kernel into RAM(memory) from storage image/device. 
+This action is to be performed the first in a bootloader and not in later sections because we use BIOS functions for reading disk and BIOS provides us some functions to do it simply. 
+
+In this implementation, the address 0x10000 is used since it is addressable in real mode(16 mode) and also a reasonable memory address in the context of 32 bit mode (protected mode). 
+
+We set the es and bx registers as es = 0x1000 and bx =0x0000, and since the file which is read by this function is loaded to ES:BX address, the resultant address will be 0x10000.
+
+    2: Setting up protected mode and enabling protected mode:
+
+Before protected mode(32 bit mode) is actually enabled. The x86 32 bit CPUs are designed in such a way that they require something called the GDT.
+
+The Global Descriptor table(GDT) is used by the CPU when executing an instruction to see if the current person using the CPU has the permissions to do so. Or not. It tells which instructions have read/executable permissions.
+
+The GDT in this execution, is complete and fully written. But in my knowledge. I have left out the individual bit significance of the GDT, and left it as a grey box in my understanding. 
+
+The particular GDT which is being used in this execution uses 3 segments. They are as follows:
+1) The null segment. 8 bytes of zeroes, these are required for some emulation software and since I am developing using QEMU, I have added it into my GDT. 
+2) The code segment: The code segment tells which instructions are executable. 
+3) The data segment: Tells the CPU which code is readable and writable. 
+
+Now we need to calculate the size of the gdt by surrounding the GDT definition with labels and then use the lgdt instruction, to load the GDT into CPU. 
+
+
+
+NOTE: In this particular implementation of the GDT, we are not using segmentation and making the memory segments as flat, meaning: the segments cover all lengths of the memory, that is, 0-4GB. We do this because segmentation is a notorious memory model and it is very hard to work with in the long run. And we do this because later, this implementation might use paging. But that is for future me to decide. 
+
+
+
+
+NOTE: The permissions of the current user are determined by the segment registers like the ds and cs and which 'segment selector' it points to. In this case, ds and cs have been loaded with the ring0 segments which we defined and their selectors.  
+
+
+
+NOTE: All segments in the v1 implementation of the bootloader have ring0 permissions. Which means the instructions have permissions to do anything with the components of the CPU. 
+
+
+
+Now comes the actual enabling of protected mode.
+
+This is done by changing the protection enable bit of cr0(Control Register0 to 1.) 
+
+This is done by this section of the code:
+**
+mov eax, cr0
+or eax, 1
+mov cr0, eax 
+**
+
+This switch of the control register and enabling of the protected mode requires a GDT to be loaded. Which has been done with the GDT definition and the lgdt instruction.
+
+Immediately after this we have to follow up with a far jump statement because it is the only permitted way to set the cs segment register. We do this by this statement:
+
+**
+
+jmp 0x08 : protected_setup 
+
+** 
+
+This statemnt sets the cs and jumps to the label protected_setup which related to the next job of the bootloader.
+
+
+3: Clean up and finishing and jumping to kernel address. 
+
+This section is relatively simple as it just sets up the segment registers with the data segment selector and far jumps to 0x10000 where our kernel resides. 
+
+
+We set the segment registers to the data selector because we don't want to use segmentation and use a flat memory model, which means, after setting the segment registers to the data segment. We forget all about segmentation since our GDT entry segments define a flat memory model. 
+
+
+
+And we use a kernel_entry.asm file because when linking objects files of the files we created, like the kernel.o or the vga.o in the later implementations, we use the ld command to link all them together. The _start label in the kernel_entry.asm file is executed first. It is like an entry from bootloader's address to this address where our kernel resides. The kernel_entry.asm file is executed first which calls the kernel_main() function of the kernel.c which manages all other libraries which I will write in the future.
